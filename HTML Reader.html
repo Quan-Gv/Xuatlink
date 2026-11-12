@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HTML Reader</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1c2330;--mut:#6b7587;--bd:#dde1e8;--ac:#2f6fed;--acf:#fff;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171d;--card:#1d222b;--fg:#e8ebf0;--mut:#98a2b3;--bd:#323946;--ac:#5b93ff;--acf:#0b1220;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14171d;--card:#1d222b;--fg:#e8ebf0;--mut:#98a2b3;--bd:#323946;--ac:#5b93ff;--acf:#0b1220;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 14px;font-size:14px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+button,.btn{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--fg);padding:8px 14px;border-radius:8px;cursor:pointer}
+button:hover,.btn:hover{border-color:var(--ac)}
+.pri{background:var(--ac);color:var(--acf);border-color:var(--ac);font-weight:600}
+.drop{border:2px dashed var(--bd);border-radius:12px;padding:14px;text-align:center;color:var(--mut);margin-bottom:12px;background:var(--card)}
+.drop.on{border-color:var(--ac);color:var(--ac)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:800px){.grid{grid-template-columns:1fr}}
+.pane{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.ph{padding:8px 12px;border-bottom:1px solid var(--bd);font-size:13px;color:var(--mut);display:flex;justify-content:space-between;gap:8px}
+textarea{width:100%;height:480px;border:0;outline:0;resize:vertical;padding:12px;background:transparent;color:var(--fg);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;tab-size:2;white-space:pre}
+iframe{width:100%;height:480px;border:0;background:#fff}
+.link{margin-top:12px;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;display:none}
+.link.show{display:block}
+.link input{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:transparent;color:var(--fg);font:13px ui-monospace,Menlo,Consolas,monospace;margin:8px 0}
+.link small{color:var(--mut);display:block}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>HTML Reader</h1>
+  <p class="sub">Mở file HTML, xem mã nguồn, chạy thử, sao chép, tải về và xuất link chạy trên trình duyệt.</p>
+
+  <div class="drop" id="drop">Kéo thả file .html vào đây hoặc bấm nút Mở file</div>
+
+  <div class="bar">
+    <button class="pri" id="open">Mở file HTML</button>
+    <input type="file" id="file" accept=".html,.htm,text/html" hidden>
+    <button id="run">Chạy thử</button>
+    <button id="copy">Sao chép code</button>
+    <button id="down">Tải file về</button>
+    <button id="export">Xuất link chạy</button>
+    <button id="tab">Mở tab mới</button>
+    <button id="clear">Xóa</button>
+  </div>
+
+  <div class="grid">
+    <div class="pane">
+      <div class="ph"><span>Mã nguồn (có thể chỉnh sửa)</span><span id="info">0 ký tự</span></div>
+      <textarea id="code" spellcheck="false" placeholder="Dán code HTML vào đây hoặc mở một file..."></textarea>
+    </div>
+    <div class="pane">
+      <div class="ph"><span>Kết quả chạy</span><span id="fname">untitled.html</span></div>
+      <iframe id="view" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+    </div>
+  </div>
+
+  <div class="link" id="linkbox">
+    <strong>Link chạy trên trình duyệt</strong>
+    <input id="linkout" readonly>
+    <div class="bar" style="margin:0">
+      <button id="copylink">Sao chép link</button>
+      <button id="openlink">Mở link</button>
+    </div>
+    <small>Đây là link blob tạo từ code hiện tại: chạy được ngay trên trình duyệt này. Link không dùng được trên máy khác. Để chia sẻ cho người khác, hãy tải file về rồi gửi, hoặc dùng nút Chia sẻ của trang này.</small>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var code=$("code"),view=$("view"),info=$("info"),fname=$("fname"),toastEl=$("toast");
+  var name="untitled.html",blobUrl=null,tt;
+
+  function toast(m){toastEl.textContent=m;toastEl.classList.add("on");clearTimeout(tt);tt=setTimeout(function(){toastEl.classList.remove("on")},2200)}
+  function upd(){info.textContent=code.value.length.toLocaleString("vi-VN")+" ký tự"}
+  function run(){view.srcdoc=code.value;upd()}
+
+  function load(file){
+    if(!file)return;
+    var r=new FileReader();
+    r.onload=function(){code.value=String(r.result);name=file.name||"untitled.html";fname.textContent=name;run();toast("Đã mở "+name)};
+    r.onerror=function(){toast("Không đọc được file")};
+    r.readAsText(file);
+  }
+
+  $("open").onclick=function(){$("file").click()};
+  $("file").onchange=function(e){load(e.target.files[0]);e.target.value=""};
+  $("run").onclick=run;
+  code.addEventListener("input",upd);
+  code.addEventListener("keydown",function(e){
+    if(e.key==="Tab"){e.preventDefault();var s=code.selectionStart;code.setRangeText("  ",s,code.selectionEnd,"end");upd()}
+  });
+
+  var drop=$("drop");
+  ["dragenter","dragover"].forEach(function(ev){window.addEventListener(ev,function(e){e.preventDefault();drop.classList.add("on")})});
+  ["dragleave","drop"].forEach(function(ev){window.addEventListener(ev,function(e){e.preventDefault();drop.classList.remove("on")})});
+  window.addEventListener("drop",function(e){var f=e.dataTransfer&&e.dataTransfer.files[0];if(f)load(f)});
+
+  function copyText(t){
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(t).catch(function(){return fallback(t)});
+    }
+    return fallback(t);
+  }
+  function fallback(t){
+    return new Promise(function(res,rej){
+      var ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";
+      document.body.appendChild(ta);ta.select();
+      var ok=false;try{ok=document.execCommand("copy")}catch(e){}
+      document.body.removeChild(ta);ok?res():rej();
+    });
+  }
+
+  $("copy").onclick=function(){
+    if(!code.value){toast("Chưa có code");return}
+    copyText(code.value).then(function(){toast("Đã sao chép code")},function(){code.select();toast("Hãy nhấn Ctrl+C để sao chép")});
+  };
+
+  function makeBlob(){
+    if(blobUrl)URL.revokeObjectURL(blobUrl);
+    blobUrl=URL.createObjectURL(new Blob([code.value],{type:"text/html;charset=utf-8"}));
+    return blobUrl;
+  }
+
+  $("down").onclick=async function(){
+    if(!code.value){toast("Chưa có code");return}
+    var fn=/\.html?$/i.test(name)?name:name+".html";
+    try{
+      var d=await claude.use("downloads");
+      if(d){await d.save({filename:fn,data:code.value});toast("Đã tải file");return}
+    }catch(e){if(e&&e.code==="declined"){return}}
+    try{
+      var a=document.createElement("a");a.href=makeBlob();a.download=fn;document.body.appendChild(a);a.click();document.body.removeChild(a);
+      toast("Đang tải file...");
+    }catch(e){toast("Không tải được. Hãy dùng nút Sao chép code")}
+  };
+
+  $("export").onclick=function(){
+    if(!code.value){toast("Chưa có code");return}
+    $("linkout").value=makeBlob();
+    $("linkbox").classList.add("show");
+    toast("Đã tạo link");
+  };
+  $("copylink").onclick=function(){copyText($("linkout").value).then(function(){toast("Đã sao chép link")},function(){$("linkout").select();toast("Hãy nhấn Ctrl+C")})};
+  function openUrl(u){var w=null;try{w=window.open(u,"_blank")}catch(e){}if(!w)toast("Trình duyệt chặn tab mới. Hãy dán link vào thanh địa chỉ")}
+  $("openlink").onclick=function(){openUrl($("linkout").value)};
+  $("tab").onclick=function(){if(!code.value){toast("Chưa có code");return}openUrl(makeBlob())};
+
+  $("clear").onclick=function(){code.value="";name="untitled.html";fname.textContent=name;view.srcdoc="";$("linkbox").classList.remove("show");upd()};
+
+  code.value='<!DOCTYPE html>\n<html lang="vi">\n<head>\n<meta charset="utf-8">\n<title>Ví dụ</title>\n<style>body{font-family:sans-serif;text-align:center;padding:40px}</style>\n</head>\n<body>\n  <h1>Xin chào!</h1>\n  <p>Hãy mở file HTML của bạn để xem tại đây.</p>\n</body>\n</html>';
+  run();
+})();
+</script>
+</body>
+</html>
